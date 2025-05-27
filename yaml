@@ -1,0 +1,88 @@
+import network
+import time
+from machine import Pin, ADC
+from umqtt.simple import MQTTClient
+
+# Configurações Wi-Fi
+SSID = 'Wokwi-GUEST'
+PASSWORD = ''
+
+# Configurações MQTT
+BROKER = 'broker.hivemq.com'
+CLIENT_ID = 'esp32_irrigador'
+TOPIC_PUBLISH = b'irrigador/status'
+TOPIC_SUBSCRIBE = b'irrigador/comando'
+
+# Pinos
+PIN_SENSOR = 34
+PIN_VALVULA = 26
+PIN_LED = 15  # Definindo o pino do LED
+
+# Setup inicial
+sensor = ADC(Pin(PIN_SENSOR))
+sensor.atten(ADC.ATTN_11DB)
+
+valvula = Pin(PIN_VALVULA, Pin.OUT)
+led = Pin(PIN_LED, Pin.OUT)  # Configurando o pino do LED como saída
+
+def conecta_wifi():
+    print('Conectando ao Wi-Fi...', end='')
+    wlan = network.WLAN(network.STA_IF)
+    wlan.active(True)
+    wlan.connect(SSID, PASSWORD)
+    while not wlan.isconnected():
+        print('.', end='')
+        time.sleep(0.5)
+    print(' conectado!')
+    print('IP:', wlan.ifconfig()[0])
+
+def trata_mensagem(topico, mensagem):
+    print('Mensagem recebida:', mensagem)
+    if mensagem == b'abrir':
+        valvula.value(0)  # Liga válvula
+        led.value(1)  # Acende o LED
+    elif mensagem == b'fechar':
+        valvula.value(1)  # Desliga válvula
+        led.value(0)  # Apaga o LED
+
+def conecta_mqtt():
+    client = MQTTClient(CLIENT_ID, BROKER)
+    client.set_callback(trata_mensagem)
+    client.connect()
+    client.subscribe(TOPIC_SUBSCRIBE)
+    print('Conectado ao Broker MQTT!')
+    return client
+
+def main():
+    conecta_wifi()
+    client = conecta_mqtt()
+
+    while True:
+        try:
+            umidade = sensor.read()
+            print('Umidade do Solo:', umidade)
+
+            if umidade > 800:
+                valvula.value(0)  # Liga válvula
+                led.value(1)  # Acende o LED
+                print("Válvula LIGADA - irrigando")
+                client.publish(TOPIC_PUBLISH, b'Solo seco - irrigando')
+            else:
+                valvula.value(1)  # Desliga válvula
+                led.value(0)  # Apaga o LED
+                print("Válvula DESLIGADA - solo úmido")
+                client.publish(TOPIC_PUBLISH, b'Solo úmido - válvula fechada')
+
+            client.check_msg()
+            time.sleep(5)
+
+        except OSError as e:
+            print('Erro de conexão MQTT:', e)
+            time.sleep(5)
+            try:
+                client = conecta_mqtt()
+            except Exception as e:
+                print('Falha ao reconectar:', e)
+                time.sleep(10)
+
+main()
