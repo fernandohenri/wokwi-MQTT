@@ -37,7 +37,6 @@ def conecta_wifi():
     print('IP:', wlan.ifconfig()[0])
 
 def trata_mensagem(topico, mensagem):
-    print('Mensagem recebida:', mensagem)
     if mensagem == b'abrir':
         valvula.value(0)  # Liga válvula
         led.value(1)  # Acende o LED
@@ -73,6 +72,8 @@ def main():
                 print("Válvula DESLIGADA - solo úmido")
                 client.publish(TOPIC_PUBLISH, b'Solo úmido - válvula fechada')
 
+            client.publish(TOPIC_SUBSCRIBE, b'Umidade do Solo: ' + str(umidade).encode())
+            
             client.check_msg()
             time.sleep(5)
 
